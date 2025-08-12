@@ -3,7 +3,6 @@ Prefoldin in Chromatin
 ================
 Master’s Thesis – Omics Data Analysis and Systems Biology, University of
 Seville & International University of Andalusia
-2025-08-12
 
 # Overview
 
@@ -47,3 +46,4 @@ Input samples were included as controls.
 - **Tested on:** Windows 10  
 - **Language:** R  
 - Dependencies and parameters are detailed within each script.ç
+
