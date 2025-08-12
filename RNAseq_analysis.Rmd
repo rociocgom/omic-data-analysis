@@ -1,0 +1,872 @@
+---
+title: "Regulation of Inflorescence Arrest in Arabidopsis thaliana: An RNA-Seq Approach to Evaluate the Role of HB21/40/53 and Abscisic Acid"
+lang: en
+header-includes:
+   - \usepackage{pdfpages}
+   - \renewcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+   - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+   - \usepackage{fvextra}
+   - \makeatletter
+   - \newcommand{\verbatimfont}[1]{\renewcommand{\verbatim@font}{\ttfamily#1}}
+   - \makeatother
+   - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines, fontsize=\normalsize,commandchars=\\\{\}}
+output:
+  pdf_document: 
+    toc: true
+    # keep_tex: yes
+---
+
+```{r setup, include=FALSE}
+# Initial R Markdown configuration
+library(showtext)
+
+# Enable showtext for graphics
+showtext_auto()
+
+# Global graphics configuration
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# Select the appropriate CRAN mirror, in our case Madrid
+options(repos = c(CRAN = "https://cran.rediris.es//"))
+
+```
+
+#### Authors:
+
+-   Rocío Cañete Gómez
+-   Diana Andreea Baicea
+-   Alberto Barrero González
+-   Modesto Berraquero Pérez
+-   Nieves Botello García
+-   Pablo Cano Jiménez
+
+## Introduction
+
+### Background
+
+Floral arrest is a prominent phenomenon in plant biology. This process marks the end of flowering and signals the transition from a reproductive state to one focused on the production of new flowers. The FUL-AP2 pathway plays a major role in regulating the end of flowering. Numerous factors have been identified as possible regulators of this pathway, including the transcription factors HB21, HB40, and HB53. Phytohormones such as abscisic acid (ABA) also play a key role in this phenomenon. How these and other regulatory factors are related and integrated is not yet fully understood.
+
+### Objective
+
+Our objective is to study, using RNA-seq techniques, the variations in gene expression after induction of the HB21 gene, a crucial transcription factor in the regulation of floral arrest.
+
+## Materials and Methods
+
+### Installation of required packages
+
+```{r, message = FALSE, warning = FALSE, results='hide'}
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#  install.packages("BiocManager")
+
+#BiocManager::install(c("gene.expression.barplot","DESeq2", "limma", "NormalyzerDE", "clusterProfiler", "pathview", "enrichplot", "org.At.tair.db", "VennDiagram"))
+
+#install.packages(c("FactoMineR", "factoextra"))
+```
+
+```{r, message = FALSE, warning = FALSE, results='hide'}
+# Initialize the libraries required for RNA-seq data analysis
+library(DESeq2)
+library(NormalyzerDE)
+library(clusterProfiler)
+library(org.At.tair.db)
+library(enrichplot)
+library(pathview)
+library(FactoMineR)
+library(factoextra)
+```
+
+### Experimental Design
+
+All samples are available in the Gene Expression Omnibus (GEO) database under accession number GSE249766. This study uses the organism Arabidopsis thaliana, whose genome is 119 Mb in size and distributed across 5 chromosomes. The genome version used in the original study was TAIR10, while in our analysis we used a more recent version, TAIR10.1.
+
+The experimental design aimed to analyze changes in gene expression in response to the induction of the HB21 gene, a key transcription factor controlling floral arrest at the end of flowering. For this purpose, an RNA-seq analysis was performed on transgenic plants carrying an inducible expression system called HB21ind, which allows activation of HB21 expression under the control of an inducible promoter upon dexamethasone (Dex) application. This genetic construct enables the analysis of HB21 effects without interference from HB40 and HB53 genes, which have redundant functions.
+
+Plants were treated two weeks after the onset of flowering. The Mock (control) condition received a solution containing only 0.015% Silwet L-77 directly on the inflorescence apex, while the Dex condition received a drop of dexamethasone solution (Dex - 10 μM) and 0.015% Silwet L-77. Silwet L-77 is a surfactant that improves absorption of the applied solution but does not activate HB21, while Dex activates the system that enables HB21 transcription factor expression in meristem cells. Approximately 6-8 hours after treatment, inflorescence apices were collected, removing all visible open flowers to avoid transcriptomic noise from more developed floral tissues.
+
+RNA-seq library preparation and sequencing were performed on the Illumina NovaSeq 6000 platform with paired-end reads. A total of 6 samples were analyzed:
+
+-   Mock condition (control): 3 replicates
+
+    -   GSM7963920
+    -   GSM7963921
+    -   GSM7963922
+
+-   Dex condition: 3 replicates
+
+    -   GSM7963923
+    -   GSM7963924
+    -   GSM7963925
+
+Regarding the adequacy of the experimental design, it can be considered optimal for our objective, as a transgenic inducible system was used to compare two conditions: plants treated with dexamethasone (Dex), which activates HB21 expression, and control plants (Mock). Both conditions were developed under the same controlled environment, eliminating possible external variables and ensuring that observed changes in gene expression are exclusively attributable to HB21 activation. Although the number of biological replicates was limited to three per treatment, this is an acceptable standard in transcriptomic studies, especially considering the high costs and time required for multicellular eukaryotes. In addition, the design includes sample collection at a defined time interval (6-8 hours post-treatment), ensuring capture of the initial effects of gene induction. Therefore, this experimental design provides a solid and adequate basis for investigating the influence of HB21 on floral arrest processes at the end of flowering.
+
+### Workflow
+
+The analysis begins with workspace preparation in MobaXterm, where the necessary data are downloaded, including raw sequence files in .fq.gz format, the reference genome in .fna format, and genome annotations in .gtf format, obtained from databases such as ENSEMBL and ENA-SRA. Next, the reference genome index is generated using STAR, a necessary step for aligning RNA-seq reads to the genome.
+
+A SCRIPT named "sample_processing_script.sh" is then applied, specifically prepared for paired-end samples. In the preprocessing stage, the .fq.gz reads from each sample undergo quality control with FASTQC, generating .zip files and .html reports. Next, reads are mapped to the reference genome using STAR, producing aligned .bam files. StringTie is used for transcript assembly and gene quantification, generating .gtf files for assembly and .tsv files for expression levels in each sample. This concludes the SCRIPT. Afterwards, to consolidate information from all samples, predDE.py is used to process the .tsv files generated by StringTie and produce a raw count matrix in .csv format. This file is fundamental for subsequent differential expression analysis.
+
+Finally, in RStudio, exploratory and statistical analysis is performed. The .tsv data are consolidated into a matrix for subsequent normalization using NormalyzerDE, generating a normalized matrix. Principal component analysis (PCA) is performed with FactoMineR to identify clustering patterns among samples. Differential expression analysis is performed with DESeq2, identifying activated and repressed genes (differentially expressed genes, DEGs). These DEG lists (vectors) are used for functional enrichment with clusterProfiler, which identifies relevant biological processes, molecular functions, or cellular components (Gene Ontology, GO terms) and metabolic or signaling pathways associated with the DEGs (Kyoto Encyclopedia of Genes and Genomes, KEGG). Results are visualized with plots such as the volcano plot.
+
+## Results
+
+### Quality analysis and global distribution of Gene Expression
+
+#### Sample quality
+
+Six paired-end samples were analyzed with FASTQC, evaluating overall quality and gene expression distribution. In general, the parameters indicate acceptable quality, with most values in green and some warnings in orange or red, which are common and do not compromise the analysis. GC content (44%) is consistent across all samples, although higher than the Arabidopsis genomic average (36%), which is associated with enrichment of coding sequences or adapter bias during ILLUMINA library preparation. Per-base and per-sequence quality is high (all samples \>20), although the last bases show a slight expected deterioration, as this is where sequencing usually starts to fail or where degradation may occur, so it does not affect the analysis. Base proportions are constant, with no significant biases, and GC content distribution is adequate, although slightly longer, which can be explained by library preparation. Another indicator of good quality and absence of serious errors is that no N bases (unidentified) were detected. Sequence length was flagged as a warning in all samples (this can be expected behavior in RNA-seq, such as trimming issues or differences in read lengths), and shows two different identifying biases between forward and reverse strands, which is common in paired-end sequencing. High duplication was observed in all forward reads (\~30%), generating a warning attributable to library preparation and sequencing differences, but manageable with analysis tools; this does not occur in reverse reads (no warning). Regarding over-represented sequences, only sample 2 showed warnings, specifically in both forward and reverse strands, and these sequences correspond to the TruSeq adapter and residual Illumina Single End PCR Primer 1, respectively, but this does not have a critical impact on the analysis, as the percentages are low (\<0.14%) and only warnings are issued. In addition, adapter content confirms that no adapters were detected in any strand of any sample. Overall results confirm that the data are reliable and suitable for further analysis.
+
+#### Data loading and preprocessing
+
+We load the TSV files with expression levels measured in TPM (continuous data)
+
+```{r, message = FALSE, warning = FALSE, results='hide'}
+sample01 <- read.table(file="sample01.tsv",header=T,sep="\t")
+gene.expression.sample01 <- sample01$TPM
+names(gene.expression.sample01) <- sample01$Gene.ID
+
+sample02 <- read.table(file="sample02.tsv",header=T,sep="\t")
+gene.expression.sample02 <- sample02$TPM
+names(gene.expression.sample02) <- sample02$Gene.ID
+
+sample03 <- read.table(file="sample03.tsv",header=T,sep="\t")
+gene.expression.sample03 <- sample03$TPM
+names(gene.expression.sample03) <- sample03$Gene.ID
+
+sample04 <- read.table(file="sample04.tsv",header=T,sep="\t")
+gene.expression.sample04 <- sample04$TPM
+names(gene.expression.sample04) <- sample04$Gene.ID
+
+sample05 <- read.table(file="sample05.tsv",header=T,sep="\t")
+gene.expression.sample05 <- sample05$TPM
+names(gene.expression.sample05) <- sample05$Gene.ID
+
+sample06 <- read.table(file="sample06.tsv",header=T,sep="\t")
+gene.expression.sample06 <- sample06$TPM
+names(gene.expression.sample06) <- sample06$Gene.ID
+```
+
+```{r}
+# Assign gene names to the gene expression matrix
+gene.ids <- sample01$Gene.ID
+
+# Access the vectors using [gene.ids] to extract the values in the same order for all
+gene.expression <- matrix(data = c(gene.expression.sample01[gene.ids],
+                                   gene.expression.sample02[gene.ids],
+                                   gene.expression.sample03[gene.ids],
+                                   gene.expression.sample04[gene.ids],
+                                   gene.expression.sample05[gene.ids],
+                                   gene.expression.sample06[gene.ids]),
+                          nrow = length(gene.ids),
+                          ncol = 6)
+
+head(gene.expression)
+
+# Assign gene IDs to the rows and sample names to the columns
+rownames(gene.expression) <- gene.ids
+colnames(gene.expression) <- c("sample01", "sample02", "sample03",
+                               "sample04", "sample05", "sample06")
+
+head(gene.expression)
+```
+
+```{r}
+gene.expression.1 <- gene.expression + 1
+
+write.table(x = gene.expression.1,file = "arabidopsis_gene_expression.tsv",
+            quote = F,row.names = F,
+            sep = "\t") 
+```
+
+Once the samples have been loaded and the gene expression matrix has been generated, we proceed to visualize the global expression levels.
+
+#### Global distribution of gene expression
+
+First, we use a boxplot to represent the general distribution of gene expression across the different samples.
+
+```{r, fig.align='center', out.width='80%', fig.pos='H'}
+boxplot(gene.expression, outline = FALSE, las = 2, 
+        ylab = "Gene Expression (TPM)",
+        col = rep(c("coral", "lightblue"), each = 3))
+```
+
+We can observe that all boxes are similar in size and range, which may indicate that there are no drastic biases in global gene expression, both between conditions and within the same condition. However, there may be subtle biological differences between the conditions that are difficult to detect, and for this reason we proceed to normalize our data. Normalization improves the sensitivity to detect these differences, ensuring that even small but significant changes are correctly captured. For this, we use the NormalyzerDE library, which implements different normalization methods and allows us to evaluate their effectiveness.
+
+```{r, message = FALSE, warning = FALSE, results='hide'}
+
+
+design <- data.frame(sample = colnames(gene.expression),
+                     group = c(rep("control", 3), # sample01, sample02, sample03
+                               rep("experiment", 3))) # sample04, sample05, sample06
+
+# Save the experimental design to a tsv file.
+
+write.table(x = design, 
+            file = "normalyzer_design.tsv", 
+            quote = FALSE, 
+            row.names = FALSE, 
+            sep = "\t")
+
+# The normalyzer function runs all normalization techniques 
+# and generates evaluation metrics for them.
+if (!dir.exists("normalizacion")) {
+  normalyzer(
+    jobName = "normalizacion", 
+    designPath = "normalyzer_design.tsv", 
+    dataPath = "arabidopsis_gene_expression.tsv", 
+    outputDir = "."
+  )
+} else {
+     message("The 'normalizacion' folder already exists. 
+                         If you want to run the normalization again, please delete it.")
+}
+
+normalized.gene.expression <- read.table(file = "normalizacion/Quantile-normalized.txt",
+                                         header = TRUE)
+
+# Nombramos con los genes las filas de la matriz con los datos normalizados.
+rownames(normalized.gene.expression) <- gene.ids
+```
+
+#### Global distribution of gene expression after normalization
+
+Now, when visualizing the data after applying the "Quantile normalization" technique, we can see that the distribution of gene expression is more homogeneous and balanced across all samples. This indicates that normalization has been effective and has removed technical biases that could have affected the results of the analysis.
+
+```{r, fig.align='center', out.width='80%', fig.pos='H'}
+boxplot(normalized.gene.expression, 
+        outline = FALSE, 
+        col = rep(c("coral", "lightblue"), each = 3), 
+        ylab = "log2(TPM + 1)", 
+        las = 2)
+```
+
+**Comparison between replicates using scatter plots**
+
+Next, we can represent the similarity between replicates using scatter plots, as an exploratory analysis to rule out technical or experimental errors. When generating the scatter plot, we also calculate the correlation between replicates and include its value on the plot. Each point represents a gene. The "x" coordinate represents the expression level in one replicate and the "y" coordinate represents the expression level in the other replicate. First, we compare the control replicates (sample01, sample02, sample03).
+
+```{r}
+plot(x = normalized.gene.expression[,"sample01"],
+     y = normalized.gene.expression[,"sample02"],
+     pch = 19, col = "grey", xlab = "sample01", ylab = "sample02", cex = 0.5)
+text(x = 4, y = 12,
+     labels = paste(c(
+       "cor = ",
+       round(100 * cor(normalized.gene.expression[,"sample01"],
+                       normalized.gene.expression[,"sample02"],
+                       use = "complete.obs"), # Ignora los NA
+             digits = 2),
+       "%"), collapse = ""))
+
+plot(x = normalized.gene.expression[,"sample01"],
+     y = normalized.gene.expression[,"sample03"],
+     pch = 19, col = "grey", xlab = "sample01", ylab = "sample03", cex = 0.5)
+text(x = 4, y = 12,
+     labels = paste(c(
+       "cor = ",
+       round(100 * cor(normalized.gene.expression[,"sample01"],
+                       normalized.gene.expression[,"sample03"],
+                       use = "complete.obs"), # Ignora los NA
+             digits = 2),
+       "%"), collapse = ""))
+
+plot(x = normalized.gene.expression[,"sample02"],
+     y = normalized.gene.expression[,"sample03"],
+     pch = 19, col = "grey", xlab = "sample02", ylab = "sample03", cex = 0.5)
+text(x = 4, y = 12,
+     labels = paste(c(
+       "cor = ",
+       round(100 * cor(normalized.gene.expression[,"sample02"],
+                       normalized.gene.expression[,"sample03"],
+                       use = "complete.obs"), # Ignora los NA
+             digits = 2),
+       "%"), collapse = ""))
+```
+
+Secondly, we compare the replicates of the treatment group (sample04, sample05, sample06).
+
+```{r}
+plot(x = normalized.gene.expression[,"sample04"],
+     y = normalized.gene.expression[,"sample05"],
+     pch = 19, col = "grey", xlab = "sample04", ylab = "sample05", cex = 0.5)
+text(x = 4, y = 12,
+     labels = paste(c(
+       "cor = ",
+       round(100 * cor(normalized.gene.expression[,"sample04"],
+                       normalized.gene.expression[,"sample05"],
+                       use = "complete.obs"), # Ignora los NA
+             digits = 2),
+       "%"), collapse = ""))
+
+plot(x = normalized.gene.expression[,"sample04"],
+     y = normalized.gene.expression[,"sample06"],
+     pch = 19, col = "grey", xlab = "sample04", ylab = "sample06", cex = 0.5)
+text(x = 4, y = 12,
+     labels = paste(c(
+       "cor = ",
+       round(100 * cor(normalized.gene.expression[,"sample04"],
+                       normalized.gene.expression[,"sample06"],
+                       use = "complete.obs"), # Ignora los NA
+             digits = 2),
+       "%"), collapse = ""))
+
+plot(x = normalized.gene.expression[,"sample05"],
+     y = normalized.gene.expression[,"sample06"],
+     pch = 19, col = "grey", xlab = "sample05", ylab = "sample06", cex = 0.5)
+text(x = 4, y = 12,
+     labels = paste(c(
+       "cor = ",
+       round(100 * cor(normalized.gene.expression[,"sample05"],
+                       normalized.gene.expression[,"sample06"],
+                       use = "complete.obs"), # Ignora los NA
+             digits = 2),
+       "%"), collapse = ""))
+```
+
+In all cases, the correlation between replicates is high, indicating that the samples are consistent and there are no significant technical errors that could affect subsequent analysis.
+
+#### Principal Component Analysis (PCA)
+
+PCA is a descriptive technique for visualizing high-dimensional data, aimed at reducing the dimensionality of the dataset. In this case, each sample is an observation, and each gene is a dimension. To perform PCA, the data are arranged in a matrix where the rows correspond to samples and the columns to genes (dimensions).
+
+```{r}
+pca.gene.expression <- data.frame(Sample = colnames(normalized.gene.expression),
+                                  t(normalized.gene.expression))
+```
+
+In the created matrix, the first column, which contains the sample names, is taken as a **supplementary variable** (`quali.sup = 1`) and therefore only serves to label the samples; the remaining columns, which contain the gene expression levels in TPM, are used as active variables to calculate the principal components. PCA requires data standardization, so `scale.unit = TRUE` is specified.
+
+```{r}
+res.pca <- PCA(pca.gene.expression, 
+               graph = FALSE,
+               scale.unit = TRUE,
+               quali.sup = 1)
+```
+
+Finally, in this case, PCA is applied to visualize the samples projected onto the principal components, a plot known as the **individuals plot**, using the `fviz_pca_ind()` function from the `factoextra` package.
+
+Key parameters of this function:
+
+-   `col.ind = design$group` specifies that individuals in the plot should be colored according to the `$group` column of the `design` dataframe defined previously, where samples belong to either the `control` or `experiment` label.
+-   `repel = TRUE` ensures that overlapping labels are separated for better readability.
+-   `addEllipses = TRUE, ellipse.type = "confidence"` adds confidence ellipses that encompass individuals belonging to the same group (i.e., same color), with a 95% probability.
+
+```{r}
+fviz_pca_ind(res.pca, 
+             col.ind = design$group, 
+             pointsize = 2, 
+             pointshape = 21, 
+             fill = "black",
+             repel = TRUE, 
+             addEllipses = TRUE, 
+             ellipse.type = "confidence",
+             legend.title = "Conditions",
+             title = "",
+             show_legend = TRUE, 
+             show_guide = TRUE)
+```
+
+#### Hierarchical Clustering
+
+This is another descriptive technique in which individuals, or in this case samples, are divided into groups so that there is homogeneity within groups and heterogeneity between groups. The peculiarity in this case is that this cluster analysis is applied **to the data projected onto their principal components**, since the `HCPC()` function for clustering is applied to the result returned by the `PCA()` function.
+
+As this is a hierarchical clustering, the result is a dendrogram of the samples, whose division is analogous to what is observed in the PCA individuals plot. Notable parameters:
+
+The `HCPC()` function performs the cluster analysis: `nb.clust = 2` indicates that we want to divide the data into 2 clusters. Unlike standard hierarchical clustering, where the full dendrogram is created and *then* cut to obtain a specific number of clusters, here the number is specified in advance.
+
+The `fviz_dend()` function allows you to visualize the result as a dendrogram:
+
+-   `k = 2` in the previous object, the full dendrogram still exists, but you must specify the representation of k clusters, 2 in this case.
+
+-   `rect = TRUE` draws rectangles to separate the clusters.
+
+-   `type = "rectangle"` sets the dendrogram type to rectangular.
+
+-   `labels_track_height = 700` adjusts the space reserved for the labels, which is necessary if they are long.
+
+```{r}
+res.hcpc <- HCPC(res.pca, graph = FALSE, nb.clust = 2)   
+
+fviz_dend(res.hcpc,
+          k = 2,                          
+          cex = 0.75,                      
+          palette = "jco",                
+          rect = TRUE, rect_fill = TRUE,  
+          rect_border = "jco",            
+          type = "rectangle",
+          labels_track_height = 700)
+```
+
+Both in the PCA and in the hierarchical clustering, a clear separation is observed between the control samples and those from the dexamethasone experiment.
+
+### Differential Gene Expression Analysis
+
+**Objective**
+
+In our study, we have two experimental conditions: plants treated with dexamethasone (Dex), which activates the expression of the HB21 gene, and control plants (Mock).
+
+Our objective is to see how the stimulation of the HB21 gene, which encodes the homonymous transcription factor, affects gene expression in the inflorescence apex of Arabidopsis thaliana compared to control individuals.
+
+In the scatterplot, we compare the Mock group (X axis) and the Dex group (Y axis), where each point represents a gene. Genes that coincide with or are very close to the diagonal do not show substantial changes in their expression between conditions. This type of plot provides an initial visual reference for overexpressed genes (those above the diagonal) and underexpressed genes (those below the diagonal) compared to the control. In addition, it also serves as an indicator to detect possible sample labeling errors.
+
+```{r}
+control <- rowMeans(normalized.gene.expression[, c("sample01", "sample02", "sample03")])
+
+experiment <- rowMeans(normalized.gene.expression[, c("sample04", "sample05", "sample06")])
+
+plot(x = control,
+     y = experiment,
+     pch = 19, col = "grey", xlab = "Control",
+     ylab = "Experiment", cex = 0.5)
+
+text(x = mean(control, na.rm = TRUE),
+     y = max(experiment, na.rm = TRUE),
+     labels = paste(c(
+       "cor = ",
+       round(100 * cor(control, experiment, use = "complete.obs"), digits = 2),
+       "%"), collapse = ""))
+```
+
+In our case, the degree of dispersion of the points around the diagonal is not excessively high, which allows us to set a fold change threshold of 2.
+
+Fold change (FC) is a measure of the change in gene expression between two conditions. We use Log2FC, as this transformation facilitates the interpretation of results by placing them on a more intuitive and easily interpretable scale. To consider expression changes between conditions as substantial, we exclude genes with values between -1 and 1. That is, we consider overexpressed those genes with at least double the expression compared to the control, and underexpressed those genes with at least half the expression compared to the control group.
+
+```{r}
+## Differential gene expression analysis based on the DESeq2 package from Bioconductor R.
+## DESeq2 uses a statistical model based on the negative binomial distribution
+## to account for variability in count data and identify
+## significant changes in gene expression between experimental conditions.
+## DESeq2 performs normalization to adjust for differences in sequencing depth
+## and other systematic biases, making the data comparable between samples.
+
+## Load the gene count matrix
+gene.count.matrix <- read.table(file = "gene_count_matrix.csv", header = TRUE, sep = ",")
+head(gene.count.matrix)
+
+
+## Extract the gene IDs in the order present in the gene count matrix
+deseq.gene.ids <- gene.count.matrix$gene_id
+
+## We generate a numeric matrix by removing the first column with the gene names.
+gene.count.matrix <- gene.count.matrix[,-1]
+rownames(gene.count.matrix) <- gsub("\\|.*", "", deseq.gene.ids)
+colnames(gene.count.matrix) <- colnames(normalized.gene.expression) 
+head(gene.count.matrix)
+
+## We generate a DESeqDataSetFromMatrix object that contains the gene count data,
+dds <- DESeqDataSetFromMatrix(countData = gene.count.matrix, 
+                              colData = design, 
+                              design = ~ group)
+
+## Perform differential expression analysis
+dds <- DESeq(dds) 
+
+## Extract the results for the comparison: experiment vs. control
+res <- results(dds, contrast = c("group", "experiment", "control"))
+res
+
+## Extract the gene IDs, log2 fold change, and q-value for this comparison
+gene.ids.exp.vs.ctrl <- rownames(res)
+log.fold.change <- res$log2FoldChange
+adjusted.pval <- res$padj
+
+## Assign names to the vectors with the gene IDs
+names(log.fold.change) <- gene.ids.exp.vs.ctrl
+names(adjusted.pval) <- gene.ids.exp.vs.ctrl
+
+## Define the activated and repressed genes
+activated.genes.exp.vs.ctrl <- gene.ids.exp.vs.ctrl[log.fold.change > 1 & 
+                                                    adjusted.pval < 0.05]
+activated.genes.exp.vs.ctrl <- activated.genes.exp.vs.ctrl[!is.na(activated.genes.exp.vs.ctrl)]
+length(activated.genes.exp.vs.ctrl)
+
+repressed.genes.exp.vs.ctrl <- gene.ids.exp.vs.ctrl[log.fold.change < -1 & 
+                                                    adjusted.pval < 0.05]
+repressed.genes.exp.vs.ctrl <- repressed.genes.exp.vs.ctrl[!is.na(repressed.genes.exp.vs.ctrl)]
+length(repressed.genes.exp.vs.ctrl)
+```
+
+The fold change threshold depends on the experimental context, but values like these are commonly accepted for identifying genes with biologically relevant changes. A twofold change in expression is usually considered noteworthy in most cases. Furthermore, as mentioned earlier, in the scatterplot comparing our conditions, no excessive dispersion is observed with respect to the diagonal. When performing a differential expression analysis, we cannot limit ourselves to identifying genes with substantial changes without also considering their statistical significance. In our analysis, we used an adjusted p-value (or q-value) by the Benjamini–Hochberg method, with a threshold of 0.05.
+
+In this way, we consider a gene to be differentially expressed if it falls within our established Log2FC range and its q-value is less than 0.05. Under these conditions, we obtained a total of 127 genes with higher expression compared to the control and 223 genes underexpressed compared to the control.
+
+```{r}
+## Volcano plot
+log.adjusted.pval <- -log10(adjusted.pval)
+
+## Base plot for volcano
+plot(log.fold.change, log.adjusted.pval, 
+     pch = 19, col = "grey", cex = 0.8,
+     xlim = c(-8, 8), ylim = c(0, 60), 
+     xlab = "log2(Fold-change)", 
+     ylab = "-log10(q-value)", 
+     cex.lab = 1.5)
+
+## Highlight activated genes in red
+points(x = log.fold.change[activated.genes.exp.vs.ctrl],
+       y = log.adjusted.pval[activated.genes.exp.vs.ctrl], 
+       col = "red", cex = 0.8, pch = 19)
+
+## Highlight repressed genes in blue
+points(x = log.fold.change[repressed.genes.exp.vs.ctrl],
+       y = log.adjusted.pval[repressed.genes.exp.vs.ctrl], 
+       col = "blue", cex = 0.8, pch = 19)
+
+HB21 <- which(row.names(res) == "AT2G18550") 
+
+points(x = log.fold.change[HB21], 
+       y = log.adjusted.pval[HB21], 
+       col = "yellow", pch = 19, cex = 1.2)
+
+text(log.fold.change[HB21], log.adjusted.pval[HB21], 
+     labels = "HB21", pos = 4, col = "black", cex = 1.2)
+
+
+HB53 <- which(row.names(res) == "AT5G66700") 
+
+points(x = log.fold.change[HB53], 
+       y = log.adjusted.pval[HB53], 
+       col = "yellow", pch = 19, cex = 1.2)
+
+text(log.fold.change[HB53], log.adjusted.pval[HB53], 
+     labels = "HB53", pos = 4, col = "black", cex = 1.2)
+```
+
+For a clearer visualization of these results, we created a volcano plot. The X-axis represents the relative change in gene expression between both conditions; negative values indicate lower expression in the experimental condition compared to the control, and positive values indicate higher expression in the experimental condition compared to the control. The Y-axis represents the corrected statistical significance (q-value). A higher value here indicates greater statistical significance. Each point represents a specific gene: gray points correspond to genes that do not meet our criteria to be considered differentially expressed (an appropriate Log2FC value and q-value). Therefore, genes colored in blue are those with lower expression levels after treatment with dexamethasone, and those in red are genes whose expression increased after receiving the treatment.
+
+The genes of interest for the study, HB21 and HB53, have been highlighted; both are significantly overexpressed. These genes are part of the AP2 pathway analyzed in this study and are induced according to the experimental design. On the other hand, the other induced gene, HB40, does not appear in our results after running DESeq2, which may be due to the fact that we used a different package than the one used by the authors of the article (they use RSEM+Cufflinks), which can affect the statistical analyses.
+
+```{r}
+write.table(data.frame(Gene = activated.genes.exp.vs.ctrl), 
+            file = "activated_genes.txt", 
+            row.names = FALSE, col.names = TRUE, 
+            quote = FALSE, sep = "\t")
+
+write.table(data.frame(Gene = repressed.genes.exp.vs.ctrl), 
+            file = "repressed_genes.txt", 
+            row.names = FALSE, col.names = TRUE, 
+            quote = FALSE, sep = "\t")
+```
+
+### **Gene Ontology Term Enrichment Analysis**
+
+Gene Ontology (GO) is a structured and standardized framework of concepts that refers to gene properties. It is used in molecular biology and bioinformatics as a formalized vocabulary of prior knowledge about genes to describe the gene and its attributes.
+
+Gene Ontology is divided into two parts:
+
+The ontology itself, which is the vocabulary structure. It is hierarchical and organized into three domains: molecular function, biological processes, and cellular components.
+
+The annotation, which is the set of labels from the previous domains associated with each gene.
+
+Enrichment analysis is the procedure by which, from a set of genes—in this case, the genes selected as activated and repressed by statistical analysis—their gene ontology terms are identified and it is determined if any of them are significantly overrepresented (enriched) compared to the entire set of GO terms corresponding to all genes in the genome. This allows gaining insight into the processes, functions, or cellular compartments involved in the biological system studied, thus providing biological conclusions from the study.
+
+In this case, an enrichment analysis will be performed for two types of ontological terms: gene ontology (GO) terms and KEGG metabolic pathway ontology terms.
+
+For the GO term analysis, the function enrichGO() is used, which receives the names of the selected genes—activated or repressed—and the database of ontology terms associated with these genes, among other arguments.
+
+```{r}
+activated.enrich.go <- enrichGO(
+  gene = activated.genes.exp.vs.ctrl,
+  OrgDb = org.At.tair.db, 
+  ont = "BP", 
+  pAdjustMethod = "BH", 
+  pvalueCutoff = 0.05, 
+  readable = FALSE, 
+  keyType = "TAIR"
+)
+```
+
+With the result of this function, the enriched terms can be visualized in different chart formats: bar plot, dot plot, tree, emapplot, and cnetplot.
+
+```{r}
+#barplot(activated.enrich.go, showCategory = 20)
+#dotplot(activated.enrich.go, showCategory = 20)
+treeplot(pairwise_termsim(activated.enrich.go), showCategory = 20, nCluster = 2)
+#emapplot(pairwise_termsim(activated.enrich.go), showCategory = 20)
+#cnetplot(activated.enrich.go, showCategory = 20)
+```
+
+For the KEGG term analysis, the enrichKEGG() function is used, which takes as input the names of the activated genes and the names of all the genes in the study.
+
+```{r}
+activated.enrich.kegg <- enrichKEGG(
+  gene = activated.genes.exp.vs.ctrl,
+  universe = gene.ids.exp.vs.ctrl,
+  organism = "ath", 
+  pAdjustMethod = "BH",
+  pvalueCutoff = 0.05
+)
+
+df.activated.enrich.kegg <- as.data.frame(activated.enrich.kegg)
+head(df.activated.enrich.kegg)
+```
+
+Independently, a plot of the enriched sections of metabolic pathways according to KEGG terms can be visualized using the pathview() function. In this case, the pathway with the identifier "ath00196" is shown:
+
+```{r}
+pathview(gene.data = sort(log.fold.change, decreasing = TRUE),
+         pathway.id = "ath00196",
+         species = "ath",
+         limit = list(gene = max(abs(log.fold.change), na.rm = TRUE), cpd = 1),
+         gene.idtype = "TAIR")
+```
+
+The procedure is the same for the repressed genes:
+
+```{r}
+repressed.enrich.go <- enrichGO(
+  gene = repressed.genes.exp.vs.ctrl,
+  OrgDb = org.At.tair.db, 
+  ont = "BP", 
+  pAdjustMethod = "BH", 
+  pvalueCutoff = 0.05, 
+  readable = FALSE, 
+  keyType = "TAIR"
+)
+```
+
+```{r}
+#barplot(repressed.enrich.go, showCategory = 15)
+#dotplot(repressed.enrich.go, showCategory = 15)
+treeplot(pairwise_termsim(repressed.enrich.go), showCategory = 20, nCluster = 2)
+#emapplot(pairwise_termsim(repressed.enrich.go), showCategory = 20)
+#cnetplot(repressed.enrich.go, showCategory = 20)
+```
+
+```{r}
+repressed.enrich.kegg <- enrichKEGG(
+  gene = repressed.genes.exp.vs.ctrl,
+  universe = gene.ids.exp.vs.ctrl,
+  organism = "ath",
+  pAdjustMethod = "BH",
+  pvalueCutoff = 0.05
+)
+
+df.repressed.enrich.kegg <- as.data.frame(repressed.enrich.kegg)
+head(df.repressed.enrich.kegg)
+```
+
+It is also possible to visualize a plot of the repressed sections of metabolic pathways according to KEGG terms using the pathview() function. In this case, the pathway with the identifier "ath03440" is shown:
+
+```{r}
+pathview(gene.data = sort(log.fold.change, decreasing = TRUE),
+         pathway.id = "ath03440", 
+         species = "ath",
+         limit = list(gene = max(abs(log.fold.change), na.rm = TRUE), cpd = 1),
+         gene.idtype = "TAIR")
+```
+
+The following tables summarize the enriched GO terms for the repression and activation of genes.
+
+#### Table of GO terms for repressed genes
+
++--------------+------------------------+------------------+----------------------+
+|              | GO Term                | Description      | Representative Genes |
++==============+========================+==================+======================+
+| <GO:0010150> | Leaf senescence        | AT1G04250        |                      |
+|              |                        |                  |                      |
+|              |                        | AT1G61930        |                      |
+|              |                        |                  |                      |
+|              |                        | AT1G73680        |                      |
+|              |                        |                  |                      |
+|              |                        | AT2G44300        |                      |
+|              |                        |                  |                      |
+|              |                        | AT5G08790        |                      |
+|              |                        |                  |                      |
+|              |                        | AT5G37600        |                      |
++--------------+------------------------+------------------+----------------------+
+| <GO:0048366> | Leaf development       | AT1G04250        |                      |
+|              |                        |                  |                      |
+|              |                        | AT1G61930        |                      |
+|              |                        |                  |                      |
+|              |                        | AT1G73680        |                      |
+|              |                        |                  |                      |
+|              |                        | AT2G06200        |                      |
+|              |                        |                  |                      |
+|              |                        | AT2G44300        |                      |
+|              |                        |                  |                      |
+|              |                        | AT3G50660        |                      |
+|              |                        |                  |                      |
+|              |                        | AT5G08790        |                      |
+|              |                        |                  |                      |
+|              |                        | AT5G37600        |                      |
+|              |                        |                  |                      |
+|              |                        | AT5G66816        |                      |
++--------------+------------------------+------------------+----------------------+
+| <GO:0090693> | Plant organ senescence | AT1G04250        |                      |
+|              |                        |                  |                      |
+|              |                        | AT1G61930        |                      |
+|              |                        |                  |                      |
+|              |                        | AT1G73680        |                      |
+|              |                        |                  |                      |
+|              |                        | AT2G44300        |                      |
+|              |                        |                  |                      |
+|              |                        | AT5G08790        |                      |
+|              |                        |                  |                      |
+|              |                        | AT5G37600        |                      |
++--------------+------------------------+------------------+----------------------+
+
+Regarding the genes identified as repressed by the statistical analysis, the enrichment of GO terms shows biological processes that could be affected by this repression. This table summarizes the 3 significantly enriched GO terms, along with their functional description and some representative implicated genes.
+
+It can be observed that several of the repressed genes participate in the 3 enriched biological processes. In fact, the same genes are repressed in the processes of leaf and organ senescence. This may be because, as similar physiological functions, the repression of a gene in one of them, such as leaf senescence, can also affect others, such as the senescence of other plant organs.
+
+On the other hand, it is seen that repressed genes that participate in leaf development also participate in its senescence, and although it may seem counterproductive, this simultaneous repression could be explained if the plant, under certain specific conditions such as the arrest of inflorescences, needs to optimize the use of resources and energy to employ them in other biological processes.
+
+#### Table of GO terms for activated genes
+
+Globally, two groups of activated biological processes are collected, separated into the two tables below, first biological processes related to photosynthesis and then cellular responses to abiotic stimuli. From the first group, only a selection is shown; for greater detail, see the previously exposed treeplot.
+
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+| GO Term      | Description                                                      | Representative Genes \|                            |
+|              |                                                                  |                                                    |
+|              |                                                                  | (3 selected for large sets, indicated with ...) \| |
++==============+==================================================================+====================================================+
+| <GO:2000379> | Positive regulation of reactive oxygen species metabolic process | AT1G04400                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05100                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05070                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT3G27690                                          |
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+| <GO:0009645> | response to low light intensity stimulus                         | AT1G04400                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05100                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05070                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT3G27690                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT3G47470                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT3G54890                                          |
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+| <GO:0009269> | response to desiccation                                          | AT2G05100                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05070                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05520                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G33380                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G39800                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT3G27690                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT5G52310                                          |
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+| <GO:0009642> | response to light intensity                                      | AT1G02340                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT1G03600                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT1G04400                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | ...                                                |
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+| <GO:0009409> | response to cold                                                 | AT2G03440                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05100                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT2G05070                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | ...                                                |
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+| <GO:0010118> | stomatal movement                                                | AT1G04400                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT1G51140                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT1G75380                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | ...                                                |
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+| <GO:0009415> | response to water                                                | AT1G04400                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT1G51140                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | AT1G68010                                          |
+|              |                                                                  |                                                    |
+|              |                                                                  | ...                                                |
++--------------+------------------------------------------------------------------+----------------------------------------------------+
+
++--------------+---------------------------------------------+-------------+----------------------+
+|              | GO Term                                     | Description | Representative Genes |
++==============+=============================================+=============+======================+
+| <GO:0071478> | cellular response to radiation              | AT1G02340   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G03600   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G04400   |                      |
+|              |                                             |             |                      |
+|              |                                             | ...         |                      |
++--------------+---------------------------------------------+-------------+----------------------+
+| <GO:0071482> | cellular response to light stimulus         | AT1G02340   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G03600   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G04400   |                      |
+|              |                                             |             |                      |
+|              |                                             | ...         |                      |
++--------------+---------------------------------------------+-------------+----------------------+
+| <GO:0104004> | cellular response to environmental stimulus | AT1G02340   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G03600   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G04400   |                      |
+|              |                                             |             |                      |
+|              |                                             | ...         |                      |
++--------------+---------------------------------------------+-------------+----------------------+
+| <GO:0071214> | cellular response to abiotic stimulus       | AT1G02340   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G03600   |                      |
+|              |                                             |             |                      |
+|              |                                             | AT1G04400   |                      |
+|              |                                             |             |                      |
+|              |                                             | ...         |                      |
++--------------+---------------------------------------------+-------------+----------------------+
+
+As with the repressed genes, the GO enrichment analysis shows the biological processes overrepresented among the activated genes, and therefore they should be affected by this gene activation. The table has the same format as the one for the repressed genes
+
+Recalling the experimental design, these genes are activated in the context of the end of flowering (due to the application of dexamethasone). In this context, genes involved in the response to numerous abiotic stimuli are activated: desiccation, water, cold, radiation, and light, specifically low light; in addition to ROS metabolism and stomatal movement.
+
+The activation of genes in response to abiotic stimuli makes sense considering the flowering process as a process that occurs seasonally: plants flower at specific times of the year, and therefore, flowering and the end of flowering should be governed by parameters such as temperature, light intensity, and water availability, characteristics of each season.
+
+Stomatal movement would be related to the response to water, while the appearance of ROS is related to multiple metabolic processes that require energy, and therefore, is associated with its production, and in turn, with the processes necessary for its elimination.
+
+## Conclusions
+
+#### Conclusions
+
+We have obtained conclusions similar to those of the article, where we observe that the genes HB21 and HB53 have indeed been overexpressed, although HB40 was not detected in our computational analysis.
+
+Regardless of this, the results of our study agree with those of the authors, as we obtain the same enriched GO terms, among which are endogenous factors such as age and some cytokines (in senescence) and other environmental factors such as light, temperature, water, etc.
+
+The authors highlight the responses to stimuli and stress, mainly to hormones such as ABA, of which the genes in this study are part of the pathway; and in the stress category, they highlight water scarcity, cold, and oxidative stress, as we also observe in the GO table.
+
+#### Proposed Experiments
+
+One of the first proposals to continue this research would be a functional validation by deleting the genes HB21, HB53, and HB40, but as described in the article, this has already been done in the original study to support the conclusions of the computational analysis.
+
+Additionally, it would be interesting to perform a new expression analysis of the genes at different stages of inflorescence development, since, as we have observed, these genes are highly related to leaf development processes. It could also be interesting to study the DNA-protein interaction of the HB genes using ChIP-seq to identify their cis-regulated regions.
+
+## References
+
+1.  Andrews, S. (2010). FastQC: a quality control tool for high throughput sequence data. <http://www.bioinformatics.babraham.ac.uk/projects/fastqc>.
+
+2.  Clough, E., Barrett, T., Wilhite, S. E., Ledoux, P., Evangelista, C., Kim, I. F., Tomashevsky, M., Marshall, K. A., Phillippy, K. H., Sherman, P. M., Lee, H., Zhang, N., Serova, N., Wagner, L., Zalunin, V., Kochergin, A., & Soboleva, A. (2024). NCBI GEO: archive for gene expression and epigenomics data sets: 23-year update. *Nucleic Acids Research*, *52*(D1), D138–D144. <https://doi.org/10.1093/nar/gkad965>.
+
+3.  Dobin, A., Davis, C. A., Schlesinger, F., Drenkow, J., Zaleski, C., Jha, S., Batut, P., Chaisson, M., & Gingeras, T. R. (2013). STAR: ultrafast universal RNA-seq aligner. *Bioinformatics (Oxford, England)*, *29*(1), 15–21. <https://doi.org/10.1093/bioinformatics/bts635>.
+
+4.  Kassambara, A., & Mundt, F. (2020). Factoextra: Extract and visualize the results of multivariate data analyses. <https://CRAN.R-project.org/package=factoextra>.
+
+5.  Lê, S., Josse, J., & Husson, F. (2008). FactoMineR: An R Package for Multivariate Analysis. *Journal of Statistical Software*, *25*(1), 1–18. <https://doi.org/10.18637/jss.v025.i01>.
+
+6.  Love, M. I., Huber, W., & Anders, S. (2014). Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. *Genome Biology*, *15*(12), 550. <https://doi.org/10.1186/s13059-014-0550-8>.
+
+7.  Patel, A. A., Shukla, Y. M., Kumar, S., Sakure, A. A., Parekh, M. J., & Zala, H. N. (2020). Transcriptome analysis for molecular landscaping of genes controlling diterpene andrographolide biosynthesis in *Andrographis paniculata* (*Burm. f*.) Nees. *3 Biotech*, *10*(12), 512. <https://doi.org/10.1007/s13205-020-02511-y>.
+
+8.  Sánchez-Gerschon, V., Martínez-Fernández, I., González-Bermúdez, M. R., de la Hoz-Rodríguez, S., González, F. V., Lozano-Juste, J., Ferrándiz, C., & Balanzà, V. (2024). Transcription factors HB21/40/53 trigger inflorescence arrest through abscisic acid accumulation at the end of flowering. *Plant Physiology*, *195*(4), 2743–2756. <https://doi.org/10.1093/plphys/kiae234>.
+
+9.  Shumate, A., Wong, B., Pertea, G., & Pertea, M. (2022). Improved transcriptome assembly using a hybrid of long and short reads with StringTie. *PLoS Computational Biology*, *18*(6), e1009730. <https://doi.org/10.1371/journal.pcbi.1009730>.
+
+10. Willforss, J., Chawade, A., & Levander, F. (2019). NormalyzerDE: Online Tool for Improved Normalization of Omics Expression Data and High-Sensitivity Differential Expression Analysis. *Journal of Proteome Research*, *18*(2), 732–740. <https://doi.org/10.1021/acs.jproteome.8b00523>.
+
+11. Wu, T., Hu, E., Xu, S., Chen, M., Guo, P., Dai, Z., Feng, T., Zhou, L., Tang, W., Zhan, L., Fu, X., Liu, S., Bo, X., & Yu, G. (2021). clusterProfiler 4.0: A universal enrichment tool for interpreting omics data. *Innovation (Cambridge (Mass.))*, *2*(3), 100141. <https://doi.org/10.1016/j.xinn.2021.100141>.
