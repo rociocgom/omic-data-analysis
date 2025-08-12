@@ -6,7 +6,7 @@ Biology, University of Seville & International University of Andalusia
 
 # Overview
 
-This repository contains four R scripts used for the analysis of
+This repository contains four R scripts used for the genomic analysis of
 **ChIP-seq** data for three proteins:
 
 - **RPB1**
@@ -46,3 +46,4 @@ Input samples were included as controls.
 - **Tested on:** Windows 10  
 - **Language:** R  
 - Dependencies and parameters are detailed within each script.ç
+
