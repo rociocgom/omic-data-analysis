@@ -45,5 +45,4 @@ Input samples were included as controls.
 - **R version:** ≥ 4.4.2  
 - **Tested on:** Windows 10  
 - **Language:** R  
-- Dependencies and parameters are detailed within each script.ç
-
+- Dependencies and parameters are detailed within each script.
