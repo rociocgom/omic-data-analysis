@@ -1,0 +1,487 @@
+---
+editor_options:
+  markdown:
+    wrap: 72
+  chunk_output_type: inline
+  toc: true
+output: pdf_document
+---
+
+# ChIP-seq of LEC1: cistrome, regulome, and characterization of DNA-binding motifs
+
+#### Diana Andreea Baicea, Alberto Barrero Gonzalez, Modesto Berraquero Perez, Nieves Botello Garcia, Pablo Cano Jimenez, Rocio Cañete Gomez
+
+## Introduction
+
+### Background
+
+Following the fertilization of the ovule and the central cell, seed
+development occurs in two main phases: morphogenesis, where the embryo
+and endosperm proliferate and differentiate, and maturation, in which
+cell division ceases, storage macromolecules accumulate, and the seed
+acquires desiccation tolerance. At the end of this process, both the
+embryo and endosperm enter a state of metabolic latency until conditions
+are optimal for germination.
+
+One of the key regulators of this process is the transcription factor
+LEAFY COTYLEDON1 (LEC1), an atypical subunit of the NF-Y complex that
+plays a central role in controlling seed maturation. Previous studies
+have shown that the loss of LEC1 function negatively affects the
+accumulation of storage macromolecules, compromising desiccation
+tolerance and altering germination regulation. In addition, LEC1 is
+involved in modulating genes associated with hormonal responses and
+light regulation in seedlings, suggesting that its role extends beyond
+maturation. However, the gene networks regulated by LEC1 and its
+specific roles during the different stages of seed development remain
+largely unknown, making further research necessary to fully understand
+its impact on the global regulation of this process.
+
+### Objective
+
+The study aims to characterize the gene networks and developmental
+processes regulated by **LEC1**, identifying the genes under its
+control. To this end, it analyzes gene expression in seeds of
+Arabidopsis thaliana using **RNA-seq**, comparing the profiles of
+wild-type plants and lec1 mutants at different stages of development.
+This strategy allows us to determine which genes are affected by the
+absence of **LEC1**, either through direct or indirect regulation.
+
+In addition, the **ChIP-seq** technique is used to locate the specific
+binding sites of **LEC1** in the genome, facilitating the identification
+of its target genes and their possible role in transcription. Our
+analysis focuses on the data obtained through **ChIP-seq**, with the aim
+of contrasting our results with those obtained from the main study.
+
+## Materials and Methods
+
+### Experimental Design
+
+**GEO Access Number:** GSE99587
+
+In this study, a ChIP-seq analysis was performed using two samples
+(chip), each with its corresponding control (input), resulting in a
+total of four analyzed samples. The chip samples correspond to two
+biological replicates of developing seeds of Arabidopsis thaliana that
+present a homozygous mutation in lec1. For this experiment, a variant of
+LEC1 fused to GFP was expressed in the lec1 null mutants, and chromatin
+immunoprecipitation followed by sequencing (ChIP-seq) was performed
+using an anti-GFP antibody.
+
+**Chip samples (2 replicates)**: Seeds of Arabidopsis thaliana
+expressing LEC1 fused to GFP. These were subjected to a sonication
+process to fragment the chromatin and subsequently incubated with an
+anti-GFP antibody to carry out the immunoprecipitation.
+
+**Input samples (2 replicates)**: Controls. They were obtained using the
+same procedure as the chip samples, but in this case, nonspecific
+antibodies were used instead of the anti-GFP.
+
+### Workflow
+
+The workflow followed for ChIP-seq data analysis begins with obtaining
+sequencing files in .fastq format, including both biological replicates
+and inputs. Next, these files are aligned to the reference genome using
+the Bowtie2 tool, and the resulting BAM files are processed with
+Samtools for manipulation and filtering. Then, normalized coverage files
+in .bw format are generated, which can be visualized in IGV.
+
+Subsequently, peak identification is carried out with macs3, obtaining
+narrowPeaks and summits files for each replicate. Next, the peaks from
+both replicates are intersected to generate a consensus peak file in
+.bed format. In parallel, a non-normalized count.bed file is obtained,
+which is used for downstream analysis in RStudio. The following presents
+the workflow diagram followed.
+
+The input is used during peak calling with macs3, so the peaks that
+appear in the samples are compared with the input to distinguish
+significant peaks from noise.
+
+### Bash
+
+Our Bash script automates the preprocessing of ChIP-seq data in
+Arabidopsis thaliana. First, it defines the base directory where the
+samples are located and generates a reference genome index using
+bowtie2-build to facilitate alignment. It then iterates through the four
+samples, accessing each sample’s corresponding directory. For each
+sample, it maps single-end reads to the reference genome with Bowtie2,
+producing a SAM file. Next, it converts the SAM file to BAM format with
+samtools sort, sorts it, and generates its index with samtools index.
+Finally, it calculates coverage with bamCoverage, producing a .bw file
+for subsequent analysis.
+
+``` {.bash eval="false"}
+#!/bin/bash
+
+# Define the base directory where all the sample folders are located.
+BASE_DIR="/home/mberra/omicas/chip/samples"
+
+# Create the reference sequence index with Bowtie2.
+cd /home/mberra/omicas/chip/genome || \
+  { echo "Could not access the genome directory."; exit 1; }
+bowtie2-build arabidopsis_thaliana.fa index
+
+# A loop is made to process each of the samples to be processed.
+for SAMPLE in input_br1 input_br2 chip_br1 chip_br2
+do
+    echo "Processing sample: $SAMPLE"
+
+    # Define and access the sample directory
+    SAMPLE_DIR="$BASE_DIR/$SAMPLE"
+    cd "$SAMPLE_DIR" || { echo "Could not access the directory $SAMPLE_DIR"; exit 1; }
+
+    # Sample quality analysis
+    fastqc "${SAMPLE}.fastq.gz"
+
+    # Single-end read mapping with Bowtie2
+    bowtie2 -x ../../genome/index -U ${SAMPLE}.fastq.gz \
+            -S ${SAMPLE}.sam --threads 12
+
+    # Convert SAM file to BAM, sort, and generate index with samtools
+    samtools sort -o ${SAMPLE}.bam ${SAMPLE}.sam -@ 12
+    samtools index ${SAMPLE}.bam
+
+    # Generate a coverage file in .bw format with bamCoverage
+    bamCoverage -bs 5 --normalizeUsing CPM \
+                --bam ${SAMPLE}.bam \
+                -o ${SAMPLE}.bw
+done
+```
+
+Subsequently, outside of the script since we only have two samples, we
+perform peak calling using macs3 (as macs2 is discontinued and was run
+locally on one of our computers), which provides a .narrowPeak file for
+each sample. These files will be compared using intersectBed to retain
+only those peaks present in both samples.
+
+``` {.bash eval="false"}
+# Perform peak calling for the first sample against its input using macs3
+macs3 callpeak -t chip_br1.bam -c ../input_br1/input_br1.bam -f BAM --outdir . -n chip_br1
+
+# Perform peak calling for the second sample against its input using macs3
+macs3 callpeak -t chip_br2.bam -c ../input_br2/input_br2.bam -f BAM --outdir . -n chip_br2
+
+# Find peaks that are present in both samples using intersectBed
+intersectBed -a ../samples/chip_br1/chip_br1_peaks.narrowPeak \
+  -b ../samples/chip_br2/chip_br2_peaks.narrowPeak > chip_br.bed
+```
+
+## Results
+
+### Analysis of the global distribution of the Cistrome
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(BiocManager)
+#BiocManager::install('ChIPseeker')
+#install.packages("yulab.utils")
+library(ChIPseeker)
+#BiocManager::install("TxDb.Athaliana.BioMart.plantsmart51")
+library(TxDb.Athaliana.BioMart.plantsmart51)
+```
+
+```{r}
+txdb <- TxDb.Athaliana.BioMart.plantsmart51
+
+LEC1.peaks <- readPeakFile(peakfile = "~/omicas/chip/results/chip_br.bed",header=FALSE)
+
+length(LEC1.peaks)
+```
+
+According to the analysis performed using ChIPseeker, **17,259 peaks**
+were identified.
+
+To define the promoter region around the **transcription start site
+(TSS),** the getPromoters function was used.
+
+```{r}
+promoter <- getPromoters(TxDb=txdb, 
+                         upstream=1000, 
+                         downstream=1000)
+```
+
+Subsequently, the obtained peaks were annotated via the terminal using
+the macs2 command, and the results were visualized in various graphs.
+
+```{r, message=FALSE, warning=FALSE, comment=FALSE}
+LEC1.peakAnno <- annotatePeak(peak = LEC1.peaks, 
+                              tssRegion=c(-1000, 1000),
+                              TxDb=txdb)
+```
+
+-   **Pie Chart**
+
+```{r, echo=FALSE}
+plotAnnoPie(LEC1.peakAnno)
+```
+
+**Figure 1** - *Representation of the different gene regions where LEC1
+acts, with a predominance in the promoter region.*
+
+Results show that the peaks in the **promoter region** are the most
+abundant, representing **76.73%**, followed by those in the distal
+intergenic regions (14.96%). This suggests that the transcription factor
+LEC1 regulates various genes primarily at the promoter level.
+
+-   **Bar Plot**
+
+```{r, echo=FALSE}
+plotAnnoBar(LEC1.peakAnno)
+```
+
+**Figure 2** - *Representation of the different gene regions where LEC1
+binds, with a clear predominance in the promoter region.*
+
+Another form of graphical representation allows us to observe that the
+binding of LEC1 occurs **mainly in the promoter regions**, although it
+is also possible to identify, to a lesser extent, its presence in
+intergenic regions and in the 3' UTR.
+
+-   **Genomic distribution of the loci in relation to the TSS
+    (Transcription Start Site).**
+
+```{r, echo=FALSE}
+plotDistToTSS(LEC1.peakAnno,
+              title="Distribution of genomic loci relative to TSS",
+              ylab = "Genomic Loci (%) (5' -> 3')")
+```
+
+**Figure 3** - *Distribution of the peaks in relation to the TSS, where
+75% are located near this point.*
+
+This graph illustrates the distribution of the peaks around the TSS. It
+can be observed that approximately **45%** of the peaks are located
+**upstream**, within a range of **0-1 kb from the TSS**, while nearly
+**30%** are found **downstream** within that same distance. In total,
+about **75% of the peaks are situated in the immediate proximity of the
+TSS** (0-1 kb).
+
+-   **Visualization of the peaks with IGV**
+
+For a better interpretation of the results, a visualization with IGV of
+the peaks obtained after mapping was performed. Some highlighted genes
+in the reference article were analyzed, particularly **AT5G07440 (gdh2),
+AT5G07500 (pei1), and AT5G07530 (grp17).**
+
+In the case of the genes **gdh2** and **pei1** (Figures 2-3), it was
+observed that in both samples the peaks tend to concentrate in the
+regions close to the promoter of the gene, which confirms previous
+findings: LEC1 preferentially binds to promoters. On the other hand, in
+the gene **grp17** (Figure 4), a case was identified in which LEC1 does
+not show activity on its promoter.
+
+These results coincide with those obtained in the reference article.
+
+### Analysis of the regulome of the corresponding transcription factor or epigenetic mark.
+
+Once the peaks were annotated, we converted this annotation into a data
+frame to facilitate the analysis of functional enrichment.
+
+```{r}
+LEC1.annotation <- as.data.frame(LEC1.peakAnno)
+
+target.genes <- LEC1.annotation$geneId[LEC1.annotation$annotation == "Promoter"]
+
+write(x = target.genes,file = "LEC1_target_genes.txt")
+
+length(target.genes)
+
+```
+
+Initially, we determined the number of genes that make up the
+**regulome** of the transcription factor LEC1. In this case, **13242
+genes** regulated by LEC1 were identified.
+
+To visualize the regulome, click [here](LEC1_target_genes.txt).
+
+#### Functional Enrichment Analysis
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(clusterProfiler)
+library(org.At.tair.db)
+library(enrichplot)
+library(ggnewscale)
+library(enrichplot)
+```
+
+```{r}
+LEC1.enrich.go <- enrichGO(gene = target.genes,
+                           OrgDb         = org.At.tair.db,
+                           ont           = "BP",
+                           pAdjustMethod = "BH",
+                           pvalueCutoff  = 0.05,
+                           readable      = FALSE,
+                           keyType = "TAIR")
+```
+
+After performing the **functional enrichment analysis** in R, we
+represented the results through various graphs to identify the
+**biological processes** enriched in the genes regulated by LEC1.
+
+```{r, echo=FALSE}
+barplot(LEC1.enrich.go,showCategory = 10, font.size = 10)
+```
+
+The **barplot** shows that LEC1 mainly regulates genes related to the
+response to **water stress**, as well as genes linked to the **response
+to different levels of oxygen**. It also highlights its role in the
+**metabolism of monocarboxylic acids**, which are key in plant growth
+and development, as well as in adaptation to abiotic and biotic stress
+conditions.
+
+These data are consistent with the biological processes already
+identified, given that conditions such as **hypoxia** (low oxygen
+levels) and **cold** are part of the so-called **abiotic stress**, which
+results from external environmental factors.
+
+Next, we performed a **dotplot** to reinforce these results.
+
+```{r, echo=FALSE}
+dotplot(LEC1.enrich.go,showCategory = 10, font.size=7.5)
+```
+
+The most relevant processes are associated with the response to **water
+availability**. This behavior, along with other enriched processes
+related to **cold response, hypoxia, and monocarboxylic acid
+metabolism**, reinforces the idea that **LEC1 plays a key role in stress
+response** in plants.
+
+Finally, with the aim of exploring the relationship between the
+different enriched biological processes, we performed an **emapplot**.
+
+```{r, echo=FALSE}
+emapplot(pairwise_termsim (LEC1.enrich.go),showCategory = 15)
+```
+
+The results show a **clear connection** between the processes related to
+**hypoxia**, as well as between the responses to **environmental and
+abiotic stimuli**.
+
+### Enrichment of DNA Motifs in Binding Sites
+
+The results obtained with HOMER show a series of DNA motifs enriched in
+the analyzed sequences. Both known motifs, associated with previously
+characterized transcription factors, and unknown motifs that may have
+yet undescribed regulatory functions were identified.
+
+Among the known motifs, those recognized by the transcription factors
+**bZIP and bHLH**, which are related to stress response and cell
+development, stand out. **ABF1(bZIP)** is particularly notable, with a
+30.03% presence in the target sequences, as is the **E-box**, recognized
+by bHLH factors with a frequency of 25.76%. Additionally, motifs such as
+**GBF3(bZIP)** and **SPCH(bHLH)** also appear with high frequency,
+suggesting that these factors actively regulate the analyzed sequences.
+
+On the other hand, the unknown motifs include highly significant
+sequences that could represent novel regulatory elements. One example is
+**TGACACGTGT**, which shows a structure similar to that of bZIP motifs
+but without a clear association with known factors. Another case is
+**TTTATTATT**, with a 72.63% presence in the target sequences and 58.21%
+in the background, suggesting that it could be related to repetitive
+regions or uncharacterized regulatory functions.
+
+The comparison between both types of motifs confirms the key role of the
+**bZIP and bHLH** factors in the regulation of the analyzed genes. While
+the known motifs reaffirm their importance in stress response and
+development, the unknown motifs could represent new regulatory sequences
+that require further studies.
+
+## Conclusions
+
+As we established in the objectives of our analysis, we sought to
+identify the genes regulated by the transcription factor LEC1 through
+the ChIP-seq technique. The results obtained show that the binding sites
+of this transcription factor are predominantly located in promoter
+regions. **A total of 17259 peaks were identified**, of which 76.73% are
+within the range of 0 to 1 kb from the transcription start site (TSS),
+with a higher concentration of binding events in the upstream region.
+
+Following the methodology of the reference study, we analyzed in detail
+the genes gdh2, pei1, and grp17. In the first two, it was observed that
+**LEC1 binds in regions close to the promoter**, generating a peak with
+a high score. In contrast, no significant binding peak was identified in
+GRP17.
+
+On the other hand, the analysis of the LEC1 regulome revealed a total of
+**13242 regulated genes**, suggesting its involvement in a wide variety
+of biological processes. In our case, the functional enrichment analysis
+of the regulome was performed with a different approach than that of the
+reference study, resulting in the identification of a partial subset of
+enriched biological processes. enriquecidos.
+
+Based on the results obtained, it is concluded that **LEC1 plays a key
+role in the regulation of genes involved in the response to various
+types of abiotic stress** in the plant, such as hypoxia, lack of water,
+and cold. These conditions activate responses mediated by monocarboxylic
+acids, which contribute to the adaptation of the seed to adverse
+environments, favoring its germination and proper development.
+
+**To experimentally validate the results obtained** in the ChIP-seq
+analysis, several complementary experiments could be performed. First, a
+**ChIP-qPCR** would confirm the binding of LEC1 to the promoters of
+selected genes, such as gdh2 and pei1, comparing their enrichment in
+lines with LEC1-GFP and lec1 mutants. It is expected that in the line
+with LEC1-GFP, a significant enrichment in the promoters of gdh2 and
+pei1 compared to the control (lec1 mutant) will be observed. In
+addition, an **RT-qPCR expression analysis** to measure the
+transcription of selected genes would evaluate whether these genes show
+changes in their transcription in the absence or presence of LEC1. If
+LEC1 positively regulates gdh2 and pei1, in lec1 mutants their
+expression should decrease, while in lines with LEC1-GFP it should
+recover. In the case of grp17, its expression should not vary
+significantly. Given that the results suggest that LEC1 regulates genes
+related to the response to abiotic stress (hypoxia, lack of water,
+cold), the phenotypes of lec1 mutants, wild-type plants, and
+complemented lines could be compared under these conditions.
+
+For example, seedlings could be germinated and developed under hypoxia
+(low oxygen) or cold conditions. If LEC1 regulates the response to these
+stresses, lec1 mutants should show lower survival or delayed growth
+under these conditions, while plants with LEC1-GFP should rescue the
+phenotype.
+
+## References
+
+Danecek, P., Bonfield, J. K., Liddle, J., Marshall, J., Ohan, V.,
+Pollard, M. O., Whitwham, A., Keane, T., McCarthy, S. A., Davies, R. M.,
+& Li, H. (2021). Twelve years of SAMtools and BCFtools. GigaScience,
+10(2), giab008.<https://doi.org/10.1093/gigascience/giab008>
+
+Heinz, S., Benner, C., Spann, N., Bertolino, E., Lin, Y. C., Laslo, P.,
+Cheng, J. X., Murre, C., Singh, H., & Glass, C. K. (2010). Simple
+combinations of lineage-determining transcription factors prime
+cis-regulatory elements required for macrophage and B cell identities.
+Molecular cell, 38(4),
+576–589.<https://doi.org/10.1016/j.molcel.2010.05.004>
+
+Langmead, B., & Salzberg, S. L. (2012). Fast gapped-read alignment with
+Bowtie 2. Nature methods, 9(4),
+357–359.<https://doi.org/10.1038/nmeth.1923>
+
+Pelletier, J. M., Kwong, R. W., Park, S., Le, B. H., Baden, R.,
+Cagliari, A., Hashimoto, M., Munoz, M. D., Fischer, R. L., Goldberg, R.
+B., & Harada, J. J. (2017). LEC1 sequentially regulates the
+transcription of genes involved in diverse developmental processes
+during seed development. Proceedings of the National Academy of Sciences
+of the United States of America, 114(32),
+E6710–E6719.<https://doi.org/10.1073/pnas.1707957114>
+
+Posit team (2024). RStudio: Integrated Development Environment for R.
+Posit Software, PBC, Boston, MA. URL<http://www.posit.co/>.
+
+Quinlan, A. R., & Hall, I. M. (2010). BEDTools: A flexible suite of
+utilities for comparing genomic features. Bioinformatics, 26(6),
+841–842.<https://doi.org/10.1093/bioinformatics/btq033>
+
+Ramírez, F., Ryan, D. P., Grüning, B., Bhardwaj, V., Kilpert, F.,
+Richter, A. S., Heyne, S., Dündar, F., & Manke, T. (2016). deepTools2: A
+next-generation web server for deep-sequencing data analysis. Nucleic
+Acids Research, 44(W1), W160–W165.<https://doi.org/10.1093/nar/gkw257>
+
+Thorvaldsdóttir, H., Robinson, J. T., & Mesirov, J. P. (2013).
+Integrative Genomics Viewer (IGV): high-performance genomics data
+visualization and exploration. Briefings in bioinformatics, 14(2),
+178–192.<https://doi.org/10.1093/bib/bbs017>
+
+Zhang, Y., Liu, T., Meyer, C. A., Eeckhoute, J., Johnson, D. S.,
+Bernstein, B. E., Nusbaum, C., Myers, R. M., Brown, M., Li, W., & Liu,
+X. S. (2008). Model-based analysis of ChIP-Seq (MACS). Genome biology,
+9(9), R137.<https://doi.org/10.1186/gb-2008-9-9-r137>
