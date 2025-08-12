@@ -7,7 +7,7 @@ Rocío Cañete Gómez
 
 # Multi-Omic Integration Study in Hyperammonemic Rats (HA Rats 1 Dataset)
 
-This repository contains the integrative multi-omic analysis performed
+This folder contains the integrative multi-omic analysis performed
 on a rat model of minimal hepatic encephalopathy (MHE), specifically
 under a hyperammonemic diet (HA rats 1 dataset). The main goal is to
 characterize molecular changes in the hippocampus through the
@@ -69,3 +69,4 @@ integration of transcriptomics, regulomics, and metabolomics.
   signaling pathways.
 
 ### 8. Discussion on alternative methods
+
