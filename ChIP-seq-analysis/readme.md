@@ -1,4 +1,4 @@
-README: LEC1 ChIP-seq Analysis in Arabidopsis thaliana
+LEC1 ChIP-seq Analysis in Arabidopsis thaliana
 ================
 Rocío Cañete Gómez, Diana Andreea Baicea, Alberto Barrero Gonzalez,
 Modesto Berraquero Perez,Pablo Cano Jimenez
@@ -46,3 +46,4 @@ and ChIP-seq data to characterize LEC1-dependent gene regulation.
 8.  Identify LEC1 target genes and perform GO functional enrichment
     analysis with clusterProfiler.  
 9.  Visualize motif enrichment and peak distribution using R and IGV.
+
