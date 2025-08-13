@@ -29,7 +29,7 @@ sample_info <- data.frame(
                            "WT_macroH2A1","WT_rpb1","WT_spt16"), each = 2)))
 
 
-# Filter low-expression genes
+# Filter low read count genes
 
 group <- factor(sample_info$condition)
 dge <- DGEList(counts = new_countdata_table, group = sample_info$condition)
@@ -566,4 +566,5 @@ res_limma_sig_filtered_up <- res_limma_sig_filtered %>%
   filter(logFC > 0.5) %>%
   select(GeneID, logFC)
 write.table(res_limma_sig_filtered_up, "UPDGS_limma_ratio_rpb1macroH2A1.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+
 
