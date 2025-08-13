@@ -14,7 +14,7 @@ library(edgeR); library(limma); library(dplyr)
 new_countdata_table <- read.table("raw_counts_si_normalized.txt", header = TRUE, sep = "\t")
 
 
-# Set significance threshold for adjusted p-values
+# Set significance threshold for p-value
 
 alpha <- 0.05
 
@@ -566,3 +566,4 @@ res_limma_sig_filtered_up <- res_limma_sig_filtered %>%
   filter(logFC > 0.5) %>%
   select(GeneID, logFC)
 write.table(res_limma_sig_filtered_up, "UPDGS_limma_ratio_rpb1macroH2A1.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+
