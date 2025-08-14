@@ -19,7 +19,7 @@ integration of transcriptomics, regulomics, and metabolomics.
 
 ### 1. Data Description, Objectives, and Biological Question
 
-- Multi-omic data from *Rattus norvegicus* hippocampus of rats under
+- Multi-omic data from *Rattus norvegicus* hippocampus under
   hyperammonemic diet and controls.
 - Omics types: RNA-Seq, miRNA-Seq, and metabolomics.
 - General objective: To characterize integrated changes in
@@ -69,4 +69,5 @@ integration of transcriptomics, regulomics, and metabolomics.
   signaling pathways.
 
 ### 8. Discussion on alternative methods
+
 
